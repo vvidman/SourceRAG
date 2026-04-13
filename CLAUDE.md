@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 # Build entire solution
-dotnet build SourceRAG.sln
+dotnet build SourceRAG.slnx
 
 # Run individual hosts (each in its own terminal)
 dotnet run --project src/SourceRAG.Api
@@ -27,7 +27,7 @@ dotnet test tests/SourceRAG.Application.Tests --filter "FullyQualifiedName~MyTes
 
 ## Prerequisites
 
-- .NET 9 SDK
+- .NET 10 SDK
 - Qdrant: `docker run -d -p 6333:6333 qdrant/qdrant`
 - For `Local` embedding: a GGUF model (e.g. `nomic-embed-text`) — path set in `appsettings.json`
 - For `Api` embedding: `ANTHROPIC_API_KEY` environment variable

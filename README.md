@@ -141,7 +141,7 @@ When running as an MCP server (`SourceRAG.McpHost`), the following tools are exp
 
 ## Prerequisites
 
-- .NET 9 SDK
+- .NET 10 SDK
 - Qdrant (Docker recommended: `docker run -p 6333:6333 qdrant/qdrant`)
 - For `Local` embedding: a compatible GGUF model (e.g. `nomic-embed-text`)
 - For `Api` embedding: Anthropic API key in environment (`ANTHROPIC_API_KEY`)
