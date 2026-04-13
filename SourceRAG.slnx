@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SourceRAG.Api/SourceRAG.Api.csproj" />
+    <Project Path="src/SourceRAG.Application/SourceRAG.Application.csproj" />
+    <Project Path="src/SourceRAG.Domain/SourceRAG.Domain.csproj" />
+    <Project Path="src/SourceRAG.Infrastructure/SourceRAG.Infrastructure.csproj" />
+    <Project Path="src/SourceRAG.McpHost/SourceRAG.McpHost.csproj" />
+    <Project Path="src/SourceRAG.Web/SourceRAG.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SourceRAG.Application.Tests/SourceRAG.Application.Tests.csproj" />
+    <Project Path="tests/SourceRAG.Domain.Tests/SourceRAG.Domain.Tests.csproj" />
+    <Project Path="tests/SourceRAG.Infrastructure.Tests/SourceRAG.Infrastructure.Tests.csproj" />
+  </Folder>
+</Solution>
