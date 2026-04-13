@@ -203,4 +203,4 @@ Architecture Decision Records are located in `/docs/adr/`.
 
 ## License
 
-MIT
+Apache 2.0, see [License](License)
