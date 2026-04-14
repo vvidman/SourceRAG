@@ -28,6 +28,7 @@ public sealed class SourceRagOptions
     public LlamaSharpOptions LlamaSharp      { get; init; } = new();
     public AnthropicOptions Anthropic        { get; init; } = new();
     public AzureAdOptions AzureAd            { get; init; } = new();
+    public ChunkingOptions Chunking          { get; init; } = new();
 }
 
 public sealed class QdrantOptions
@@ -52,4 +53,10 @@ public sealed class AzureAdOptions
     public string TenantId { get; init; } = string.Empty;
     public string ClientId { get; init; } = string.Empty;
     public string Audience { get; init; } = string.Empty;
+}
+
+public sealed class ChunkingOptions
+{
+    public int ChunkSize { get; init; } = 400;
+    public int Overlap   { get; init; } = 80;
 }

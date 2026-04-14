@@ -7,10 +7,15 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Anthropic.SDK" Version="*" />
     <PackageReference Include="LibGit2Sharp" Version="0.31.0" />
+    <PackageReference Include="LlamaSharp" Version="*" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="*" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="*" />
+    <PackageReference Include="Qdrant.Client" Version="*" />
     <PackageReference Include="SharpSvn" Version="1.14005.390" />
-    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="*" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="*" />
   </ItemGroup>
 
   <ItemGroup>
