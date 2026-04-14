@@ -16,7 +16,7 @@ This means every answer is traceable to a specific file, symbol, author, commit,
 - **Syntax-aware chunking** — Roslyn-based chunking for C# (method/class/property boundaries), plain-text fallback for all other files
 - **Provider model** — Git vs SVN and Local LLM vs API embedding are runtime-configurable vertical slices
 - **Clean Architecture** — Domain → Application → Infrastructure; hosting concerns are isolated to separate projects
-- **Dual hosting** — REST API for the Blazor web client, MCP server for AI agent integration (Claude Desktop, Copilot, etc.)
+- **Dual hosting** — REST API for the Blazor web client, MCP server over HTTP/SSE for AI agent integration (VS Code Copilot, custom MCP clients)
 - **Observability-first** — AiObservability instrumentation across indexing and query pipelines
 
 ---
@@ -30,7 +30,7 @@ This means every answer is traceable to a specific file, symbol, author, commit,
 │  │  Blazor Web UI   │   │  AI Agent (MCP client)   │   │
 │  └────────┬─────────┘   └────────────┬─────────────┘   │
 └───────────┼────────────────────────── ┼ ────────────────┘
-            │ REST                      │ MCP
+            │ REST                      │ MCP (HTTP/SSE)
 ┌───────────▼───────────┐  ┌────────────▼──────────────┐
 │   SourceRAG.Api       │  │   SourceRAG.McpHost        │
 └───────────┬───────────┘  └────────────┬──────────────┘
@@ -40,12 +40,12 @@ This means every answer is traceable to a specific file, symbol, author, commit,
               │  SourceRAG.Application  │
               └────────────┬────────────┘
                            │
-         ┌─────────────────┼──────────────────┐
-         │                 │                  │
-┌────────▼──────┐ ┌────────▼──────┐  ┌────────▼──────┐
-│  VCS          │ │  Embedding    │  │  Vector Store │
-│  Git / SVN    │ │  Local / API  │  │  Qdrant       │
-└───────────────┘ └───────────────┘  └───────────────┘
+         ┌─────────────────┼──────────────────┬──────────────────┐
+         │                 │                  │                  │
+┌────────▼──────┐ ┌────────▼──────┐  ┌────────▼──────┐ ┌────────▼──────┐
+│  VCS          │ │  Embedding    │  │  Vector Store │ │  LLM          │
+│  Git / SVN    │ │  Local / API  │  │  Qdrant       │ │  Anthropic    │
+└───────────────┘ └───────────────┘  └───────────────┘ └───────────────┘
 ```
 
 ---
@@ -57,9 +57,9 @@ SourceRAG.sln
 ├── src/
 │   ├── SourceRAG.Domain/          # Entities, interfaces, enums — no dependencies
 │   ├── SourceRAG.Application/     # Use cases, MediatR handlers — depends on Domain
-│   ├── SourceRAG.Infrastructure/  # VCS, Embedding, Chunking, Qdrant — implements Domain
+│   ├── SourceRAG.Infrastructure/  # VCS, Embedding, Chunking, LLM, Qdrant — implements Domain
 │   ├── SourceRAG.Api/             # ASP.NET Core minimal API host (REST)
-│   ├── SourceRAG.McpHost/         # MCP server host (AI agent integration)
+│   ├── SourceRAG.McpHost/         # MCP server host (HTTP/SSE, AI agent integration)
 │   └── SourceRAG.Web/             # Blazor Web UI chat client
 └── tests/
     ├── SourceRAG.Domain.Tests/
@@ -129,13 +129,13 @@ At query time, file content is reconstructed from the VCS using `revision + file
 
 ## MCP Tools
 
-When running as an MCP server (`SourceRAG.McpHost`), the following tools are exposed to AI agents:
+When running as an MCP server (`SourceRAG.McpHost`), the following tools are exposed over HTTP/SSE at `/mcp`:
 
 | Tool | Description |
 |---|---|
-| `search_codebase` | Semantic search over the indexed repository |
-| `index_repository` | Trigger full or incremental reindex |
-| `get_index_status` | Return current index state, last revision, chunk count |
+| `Search` | Semantic search over the indexed repository (`SearchCodebaseTool`) |
+| `Index` | Trigger full or incremental reindex (`IndexRepositoryTool`) |
+| `GetStatus` | Return current index state, last revision, chunk count (`GetIndexStatusTool`) |
 
 ---
 
@@ -159,7 +159,8 @@ cd SourceRAG
 # Start Qdrant
 docker run -d -p 6333:6333 qdrant/qdrant
 
-# Configure your repository path and provider in appsettings.json
+# Configure RepositoryPath, VcsProvider, EmbeddingProvider in:
+#   src/SourceRAG.Api/appsettings.json  (also used by McpHost)
 
 # Run the REST API
 dotnet run --project src/SourceRAG.Api
@@ -167,15 +168,18 @@ dotnet run --project src/SourceRAG.Api
 # Run the MCP server (separate terminal)
 dotnet run --project src/SourceRAG.McpHost
 
-# Run the Blazor web client
+# Run the Blazor web client (separate terminal)
+# Set SourceRagApi:BaseUrl in src/SourceRAG.Web/appsettings.json first
 dotnet run --project src/SourceRAG.Web
 ```
+
+> **Authentication note:** In `Development` environment all three hosts bypass JWT/OIDC enforcement via a fallback allow-all policy. For production, configure the `AzureAd` section in each host's `appsettings.json` (see ADR-011).
 
 ---
 
 ## ADR Index
 
-Architecture Decision Records are located in `/docs/adr/`.
+Architecture Decision Records are located in `docs/adr/`.
 
 | ADR | Decision |
 |---|---|
