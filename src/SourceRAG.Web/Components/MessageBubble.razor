@@ -1,0 +1,17 @@
+@if (Role == "user")
+{
+    <div class="d-flex justify-content-end mb-2">
+        <div class="message-user">@Text</div>
+    </div>
+}
+else
+{
+    <div class="d-flex justify-content-start mb-2">
+        <div class="message-assistant">@Text</div>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public string Role { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public string Text { get; set; } = string.Empty;
+}

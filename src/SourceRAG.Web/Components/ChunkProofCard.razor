@@ -1,0 +1,37 @@
+<div class="proof-card">
+    @if (Chunk.SymbolName is not null)
+    {
+        <div class="mb-1">
+            <strong>@Chunk.SymbolName</strong>
+            @if (Chunk.SymbolType is not null)
+            {
+                <span class="badge bg-secondary ms-1">@Chunk.SymbolType</span>
+            }
+        </div>
+    }
+    <div class="file">@Chunk.FilePath <span class="text-muted">L@(Chunk.StartLine)–@(Chunk.EndLine)</span></div>
+    <div class="mt-1 text-muted">
+        @Chunk.Author · @Chunk.Timestamp.ToString("yyyy-MM-dd HH:mm")
+    </div>
+    <div class="mt-1" title="@Chunk.CommitMessage">
+        @TruncatedCommitMessage
+        <code class="revision ms-2">@Chunk.Revision[..Math.Min(8, Chunk.Revision.Length)]</code>
+    </div>
+    <div class="mt-1">
+        <span class="score">@((int)(Chunk.Score * 100))%</span>
+        <span class="text-muted ms-2">@Chunk.Branch</span>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public ChunkProof Chunk { get; set; } = default!;
+
+    private string TruncatedCommitMessage
+    {
+        get
+        {
+            var firstLine = Chunk.CommitMessage.Split('\n')[0];
+            return firstLine.Length > 80 ? firstLine[..80] + "…" : firstLine;
+        }
+    }
+}

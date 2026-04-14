@@ -1,0 +1,107 @@
+@inject SourceRagApiClient ApiClient
+@inject IJSRuntime JS
+@implements IDisposable
+
+<div class="index-status-panel">
+    @if (_status is null && _errorMessage is null)
+    {
+        <p class="text-muted">Loading status…</p>
+    }
+    else if (_errorMessage is not null)
+    {
+        <div class="alert alert-danger">@_errorMessage</div>
+    }
+    else if (_status is not null)
+    {
+        <dl class="row mb-3">
+            <dt class="col-sm-5">Last revision</dt>
+            <dd class="col-sm-7">
+                <code>@(_status.LastIndexedRevision is not null
+                    ? _status.LastIndexedRevision[..Math.Min(8, _status.LastIndexedRevision.Length)]
+                    : "Never")</code>
+            </dd>
+            <dt class="col-sm-5">Chunks</dt>
+            <dd class="col-sm-7">@_status.ChunkCount</dd>
+            <dt class="col-sm-5">Last indexed at</dt>
+            <dd class="col-sm-7">@(_status.LastIndexedAt?.ToString("yyyy-MM-dd HH:mm") ?? "—")</dd>
+            <dt class="col-sm-5">Status</dt>
+            <dd class="col-sm-7">@(_status.IsIndexing ? "Indexing…" : "Idle")</dd>
+        </dl>
+
+        <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-primary" @onclick="() => ReindexAsync(false)"
+                    disabled="@(_status.IsIndexing || _isWorking)">
+                Reindex
+            </button>
+            <button class="btn btn-sm btn-outline-danger" @onclick="() => ReindexAsync(true)"
+                    disabled="@(_status.IsIndexing || _isWorking)">
+                Full Reindex
+            </button>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_jobMessage))
+        {
+            <div class="alert alert-success mt-2">@_jobMessage</div>
+        }
+    }
+</div>
+
+@code {
+    private IndexStatusResponse? _status;
+    private string? _errorMessage;
+    private string? _jobMessage;
+    private bool _isWorking;
+    private System.Threading.Timer? _timer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadStatusAsync();
+        _timer = new System.Threading.Timer(
+            _ => InvokeAsync(LoadStatusAsync),
+            null,
+            TimeSpan.FromSeconds(30),
+            TimeSpan.FromSeconds(30));
+    }
+
+    private async Task LoadStatusAsync()
+    {
+        try
+        {
+            _status = await ApiClient.GetStatusAsync();
+            _errorMessage = null;
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        StateHasChanged();
+    }
+
+    private async Task ReindexAsync(bool full)
+    {
+        if (full && !await JS.InvokeAsync<bool>("confirm", "Run a full reindex? This may take a while."))
+            return;
+
+        _isWorking = true;
+        _jobMessage = null;
+        _errorMessage = null;
+
+        try
+        {
+            var job = await ApiClient.IndexAsync(full ? "full" : "incremental");
+            if (job is not null)
+                _jobMessage = $"Done — {job.ProcessedFiles} files, {job.UpsertedChunks} upserted, {job.DeletedChunks} deleted in {job.Duration.TotalSeconds:F1}s";
+            await LoadStatusAsync();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _isWorking = false;
+        }
+    }
+
+    public void Dispose() => _timer?.Dispose();
+}

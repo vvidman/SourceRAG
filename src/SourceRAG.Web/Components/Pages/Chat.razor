@@ -1,0 +1,80 @@
+@page "/"
+@rendermode InteractiveServer
+@inject SourceRagApiClient ApiClient
+
+<PageTitle>Chat — SourceRAG</PageTitle>
+
+<div class="chat-container">
+    <div class="message-history">
+        @foreach (var msg in _messages)
+        {
+            <MessageBubble Role="@msg.Role" Text="@msg.Text" />
+            @if (msg.Role == "assistant" && msg.Chunks?.Count > 0)
+            {
+                <div class="proof-list">
+                    @foreach (var chunk in msg.Chunks)
+                    {
+                        <ChunkProofCard Chunk="chunk" />
+                    }
+                </div>
+            }
+        }
+        @if (_isLoading)
+        {
+            <div class="message-assistant" style="opacity: 0.6;">Thinking…</div>
+        }
+    </div>
+
+    <div class="chat-input-bar">
+        <div class="input-group">
+            <textarea class="form-control" @bind="_inputText" @bind:event="oninput"
+                      rows="2" placeholder="Ask about the codebase…"
+                      @onkeydown="HandleKeyDownAsync"
+                      disabled="@_isLoading"></textarea>
+            <button class="btn btn-primary"
+                    @onclick="SendAsync"
+                    disabled="@(_isLoading || string.IsNullOrWhiteSpace(_inputText))">
+                Send
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private sealed record ChatMessage(string Role, string Text, IReadOnlyList<ChunkProof>? Chunks = null);
+
+    private List<ChatMessage> _messages = [];
+    private string _inputText = string.Empty;
+    private bool _isLoading;
+
+    private async Task SendAsync()
+    {
+        var query = _inputText.Trim();
+        if (string.IsNullOrEmpty(query) || _isLoading)
+            return;
+
+        _messages.Add(new ChatMessage("user", query));
+        _isLoading = true;
+        _inputText = string.Empty;
+
+        try
+        {
+            var response = await ApiClient.ChatAsync(query);
+            _messages.Add(new ChatMessage("assistant", response?.Answer ?? "(no response)", response?.Chunks));
+        }
+        catch (Exception ex)
+        {
+            _messages.Add(new ChatMessage("assistant", $"Error: {ex.Message}"));
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task HandleKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey)
+            await SendAsync();
+    }
+}
