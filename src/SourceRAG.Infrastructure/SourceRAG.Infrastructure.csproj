@@ -1,14 +1,21 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <ItemGroup>
-    <ProjectReference Include="..\SourceRAG.Domain\SourceRAG.Domain.csproj" />
-    <ProjectReference Include="..\SourceRAG.Application\SourceRAG.Application.csproj" />
-  </ItemGroup>
-
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="LibGit2Sharp" Version="0.31.0" />
+    <PackageReference Include="SharpSvn" Version="1.14005.390" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SourceRAG.Domain\SourceRAG.Domain.csproj" />
+    <ProjectReference Include="..\SourceRAG.Application\SourceRAG.Application.csproj" />
+  </ItemGroup>
 
 </Project>
