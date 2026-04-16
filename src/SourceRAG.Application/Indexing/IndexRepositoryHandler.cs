@@ -73,7 +73,10 @@ public sealed class IndexRepositoryHandler : IRequestHandler<IndexRepositoryComm
                 foreach (var file in scope.ChangedFiles)
                 {
                     if (file.ChangeType == ChangeType.Deleted)
-                        await DeleteFileChunksAsync(repoPath, file.Path, scope.FromRevision, branch, context, ct);
+                    {
+                        await _vectorStore.DeleteByFilePathAsync(file.Path, ct);
+                        context.DeletedChunkCount++;
+                    }
                     else
                         await ProcessFileAsync(repoPath, file.Path, scope.ToRevision, branch, context, ct);
                 }
@@ -134,33 +137,6 @@ public sealed class IndexRepositoryHandler : IRequestHandler<IndexRepositoryComm
         }
 
         context.ProcessedFileCount++;
-    }
-
-    private async Task DeleteFileChunksAsync(string repoPath, string filePath, string revision, string branch, PipelineContext context, CancellationToken ct)
-    {
-        var chunker = _chunkers.FirstOrDefault(c => c.CanHandle(filePath));
-        if (chunker is null) return;
-
-        var content = await _vcsProvider.GetFileContentAsync(repoPath, filePath, revision, ct);
-        var blame = await _vcsProvider.GetBlameAsync(repoPath, filePath, revision, ct);
-
-        var baseMetadata = new ChunkMetadata
-        {
-            FilePath = filePath,
-            Revision = revision,
-            Author = blame.Author,
-            CommitMessage = blame.CommitMessage,
-            Timestamp = blame.Timestamp,
-            Branch = branch
-        };
-
-        var chunks = chunker.Chunk(content, baseMetadata);
-        foreach (var chunk in chunks)
-        {
-            var pointId = ComputePointId(repoPath, filePath, chunk.Metadata.SymbolName ?? string.Empty, revision);
-            await _vectorStore.DeleteAsync(pointId, ct);
-            context.DeletedChunkCount++;
-        }
     }
 
     private static Guid ComputePointId(string repoPath, string filePath, string symbolKey, string revision)

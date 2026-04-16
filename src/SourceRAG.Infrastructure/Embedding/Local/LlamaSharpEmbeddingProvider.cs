@@ -43,6 +43,8 @@ public sealed class LlamaSharpEmbeddingProvider : IEmbeddingProvider, IAsyncDisp
 
     public int Dimensions => _dimensions;
 
+    public Task InitializeAsync(CancellationToken ct) => EnsureInitializedAsync(ct);
+
     public async Task<float[]> EmbedAsync(string text, CancellationToken ct)
     {
         await EnsureInitializedAsync(ct);

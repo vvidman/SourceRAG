@@ -40,7 +40,9 @@ public sealed class PlainTextChunker : IChunker
         var stepWords   = windowWords - (int)(_options.Overlap * 0.75);
         if (stepWords <= 0) stepWords = 1;
 
-        var words = content.Split(' ', StringSplitOptions.None);
+        var words = content.Split(
+            new[] { ' ', '\n', '\r', '\t' },
+            StringSplitOptions.RemoveEmptyEntries);
 
         if (words.Length == 0)
             return [];
@@ -80,11 +82,16 @@ public sealed class PlainTextChunker : IChunker
 
     private static int CharOffsetOfWord(string content, int wordIndex, string[] words)
     {
-        // Reconstruct offset by scanning the original content word by word.
-        var pos = 0;
-        for (var i = 0; i < wordIndex; i++)
+        if (wordIndex == 0) return 0;
+        var pos   = 0;
+        var found = 0;
+        while (pos < content.Length && found < wordIndex)
         {
-            pos += words[i].Length + 1; // +1 for the space separator
+            // skip non-whitespace (current word)
+            while (pos < content.Length && !char.IsWhiteSpace(content[pos])) pos++;
+            // skip whitespace (separator)
+            while (pos < content.Length && char.IsWhiteSpace(content[pos])) pos++;
+            found++;
         }
         return Math.Min(pos, content.Length);
     }

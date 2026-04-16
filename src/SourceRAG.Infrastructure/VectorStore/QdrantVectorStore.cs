@@ -99,6 +99,26 @@ public sealed class QdrantVectorStore : IVectorStore
             cancellationToken: ct);
     }
 
+    public async Task DeleteByFilePathAsync(string filePath, CancellationToken ct)
+    {
+        var filter = new Filter
+        {
+            Must =
+            {
+                new Condition
+                {
+                    Field = new FieldCondition
+                    {
+                        Key   = "file_path",
+                        Match = new Match { Text = filePath }
+                    }
+                }
+            }
+        };
+
+        await _client.DeleteAsync(_options.CollectionName, filter, cancellationToken: ct);
+    }
+
     public async Task<int> CountAsync(CancellationToken ct)
     {
         var result = await _client.CountAsync(_options.CollectionName, cancellationToken: ct);

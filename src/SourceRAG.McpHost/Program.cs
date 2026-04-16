@@ -19,6 +19,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.Identity.Web;
 using SourceRAG.Application.DependencyInjection;
 using SourceRAG.Application.Common;
+using SourceRAG.Domain.Interfaces;
 using SourceRAG.Infrastructure.DependencyInjection;
 using SourceRAG.McpHost.Tools;
 
@@ -52,6 +53,14 @@ builder.Services.AddMcpServer()
     .WithTools<GetIndexStatusTool>();
 
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    var vectorStore       = scope.ServiceProvider.GetRequiredService<IVectorStore>();
+    var embeddingProvider = scope.ServiceProvider.GetRequiredService<IEmbeddingProvider>();
+    await embeddingProvider.InitializeAsync(CancellationToken.None);
+    await vectorStore.EnsureCollectionAsync(embeddingProvider.Dimensions, CancellationToken.None);
+}
 
 app.UseAuthentication();
 app.UseAuthorization();

@@ -69,6 +69,15 @@ public sealed class PlainTextChunkerTests
     }
 
     [Fact]
+    public void Chunk_NewlineDelimitedContent_ProducesMultipleChunks()
+    {
+        var sut     = CreateSut(chunkSize: 10, overlap: 4);
+        var content = string.Join('\n', Enumerable.Range(0, 1000).Select(i => $"word{i}"));
+        var chunks  = sut.Chunk(content, BaseMetadata());
+        Assert.True(chunks.Count > 1, "Newline-delimited content should produce multiple chunks");
+    }
+
+    [Fact]
     public void Chunk_LongContent_ReturnsMultipleChunksWithOverlap()
     {
         // Use tiny chunk size so we get multiple chunks easily

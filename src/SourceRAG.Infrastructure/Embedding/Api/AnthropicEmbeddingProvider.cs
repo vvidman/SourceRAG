@@ -25,26 +25,20 @@ public sealed class AnthropicEmbeddingProvider : IEmbeddingProvider
     private const int    EmbeddingDimensions  = 1536;
     private const string EmbeddingModel       = "voyage-code-3";
     private const string EmbeddingsEndpoint   = "https://api.anthropic.com/v1/embeddings";
-    private const string AnthropicVersionHeader = "2023-06-01";
 
-    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly HttpClient _httpClient;
 
     public AnthropicEmbeddingProvider(IHttpClientFactory httpClientFactory)
     {
-        _httpClientFactory = httpClientFactory;
+        _httpClient = httpClientFactory.CreateClient("AnthropicEmbedding");
     }
 
     public int Dimensions => EmbeddingDimensions;
 
+    public Task InitializeAsync(CancellationToken ct) => Task.CompletedTask;
+
     public async Task<float[]> EmbedAsync(string text, CancellationToken ct)
     {
-        var apiKey = Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY")
-            ?? throw new InvalidOperationException("ANTHROPIC_API_KEY environment variable is not set.");
-
-        using var client = _httpClientFactory.CreateClient();
-        client.DefaultRequestHeaders.Add("x-api-key", apiKey);
-        client.DefaultRequestHeaders.Add("anthropic-version", AnthropicVersionHeader);
-
         var requestBody = JsonSerializer.Serialize(new
         {
             model      = EmbeddingModel,
@@ -54,7 +48,7 @@ public sealed class AnthropicEmbeddingProvider : IEmbeddingProvider
 
         using var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
 
-        var response = await client.PostAsync(EmbeddingsEndpoint, content, ct);
+        var response = await _httpClient.PostAsync(EmbeddingsEndpoint, content, ct);
         response.EnsureSuccessStatusCode();
 
         var responseJson = await response.Content.ReadAsStringAsync(ct);

@@ -14,27 +14,42 @@
    limitations under the License.
 */
 
-using System.Net.Http.Json;
+using Microsoft.Identity.Abstractions;
 using SourceRAG.Web.Models;
 
 namespace SourceRAG.Web.Services;
 
-public sealed class SourceRagApiClient(HttpClient http)
+public sealed class SourceRagApiClient(IDownstreamApi downstreamApi)
 {
-    public async Task<ChatResponse?> ChatAsync(string query, int topK = 5, CancellationToken ct = default)
+    private const string ServiceName = "SourceRagApi";
+
+    public async Task<ChatResponse?> ChatAsync(
+        string query, int topK = 5, CancellationToken ct = default)
     {
-        var response = await http.PostAsJsonAsync("/chat", new ChatRequest(query, topK), ct);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<ChatResponse>(ct);
+        var request = new ChatRequest(query, topK);
+        return await downstreamApi.PostForUserAsync<ChatRequest, ChatResponse>(
+            ServiceName,
+            request,
+            options => options.RelativePath = "chat",
+            cancellationToken: ct);
     }
 
-    public async Task<IndexJobResponse?> IndexAsync(string mode = "incremental", CancellationToken ct = default)
+    public async Task<IndexJobResponse?> IndexAsync(
+        string mode = "incremental", CancellationToken ct = default)
     {
-        var response = await http.PostAsJsonAsync("/index", new IndexRequest(mode), ct);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<IndexJobResponse>(ct);
+        var request = new IndexRequest(mode);
+        return await downstreamApi.PostForUserAsync<IndexRequest, IndexJobResponse>(
+            ServiceName,
+            request,
+            options => options.RelativePath = "index",
+            cancellationToken: ct);
     }
 
-    public Task<IndexStatusResponse?> GetStatusAsync(CancellationToken ct = default)
-        => http.GetFromJsonAsync<IndexStatusResponse>("/index/status", ct);
+    public async Task<IndexStatusResponse?> GetStatusAsync(CancellationToken ct = default)
+    {
+        return await downstreamApi.GetForUserAsync<IndexStatusResponse>(
+            ServiceName,
+            options => options.RelativePath = "index/status",
+            cancellationToken: ct);
+    }
 }

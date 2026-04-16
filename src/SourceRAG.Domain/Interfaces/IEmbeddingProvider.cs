@@ -19,5 +19,13 @@ namespace SourceRAG.Domain.Interfaces;
 public interface IEmbeddingProvider
 {
     int Dimensions { get; }
+
+    /// <summary>
+    /// Warms up the provider and ensures <see cref="Dimensions"/> reflects the
+    /// actual model size. Implementations may be no-ops for API-based providers.
+    /// Idempotent — safe to call multiple times.
+    /// </summary>
+    Task InitializeAsync(CancellationToken ct);
+
     Task<float[]> EmbedAsync(string text, CancellationToken ct);
 }

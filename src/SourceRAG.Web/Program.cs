@@ -35,11 +35,8 @@ builder.Services.AddControllersWithViews().AddMicrosoftIdentityUI();
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
-builder.Services.AddHttpClient<SourceRagApiClient>(client =>
-{
-    client.BaseAddress = new Uri(builder.Configuration["SourceRagApi:BaseUrl"]
-        ?? throw new InvalidOperationException("SourceRagApi:BaseUrl not configured"));
-});
+// IDownstreamApi (registered via AddDownstreamApi above) handles token acquisition automatically
+builder.Services.AddScoped<SourceRagApiClient>();
 
 var app = builder.Build();
 

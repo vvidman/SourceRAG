@@ -31,6 +31,7 @@ public sealed class SvnVcsProvider : IVcsProvider
     private readonly IVcsCredentialProvider _credentialProvider;
     private readonly SourceRagOptions _options;
     private readonly ILogger<SvnVcsProvider> _logger;
+    private readonly string _repositoryUri; // e.g. "https://svn.example.com/repos/proj/trunk"
 
     public SvnVcsProvider(
         IVcsCredentialProvider credentialProvider,
@@ -40,6 +41,14 @@ public sealed class SvnVcsProvider : IVcsProvider
         _credentialProvider = credentialProvider;
         _options            = options.Value;
         _logger             = logger;
+
+        if (string.IsNullOrWhiteSpace(_options.RepositoryUri))
+            throw new InvalidOperationException(
+                "SourceRAG:RepositoryUri is required when VcsProvider is 'Svn'. " +
+                "Set it to the full SVN trunk/branch URI, e.g. https://svn.example.com/repos/proj/trunk");
+
+        // Normalise — strip trailing slash
+        _repositoryUri = _options.RepositoryUri.TrimEnd('/');
     }
 
     public string GetCurrentRevision(string repoPath)
@@ -55,7 +64,7 @@ public sealed class SvnVcsProvider : IVcsProvider
         var currentRevision = GetCurrentRevision(repoPath);
 
         client.GetList(
-            new SvnUriTarget(repoPath),
+            new SvnUriTarget(new Uri(_repositoryUri)),
             new SvnListArgs { Depth = SvnDepth.Infinity },
             out Collection<SvnListEventArgs> list);
 
@@ -67,17 +76,25 @@ public sealed class SvnVcsProvider : IVcsProvider
         return Task.FromResult<IReadOnlyList<VcsFile>>(files);
     }
 
-    public Task<string> GetFileContentAsync(string repoPath, string filePath, string revision, CancellationToken ct)
+    public Task<string> GetFileContentAsync(
+        string repoPath, string filePath, string revision, CancellationToken ct)
     {
         using var client = CreateClient();
         using var stream = new MemoryStream();
-        client.Write(new SvnUriTarget(filePath, long.Parse(revision)), stream);
+
+        // Construct full URI: repositoryUri + "/" + relativeFilePath
+        var fullUri = new Uri($"{_repositoryUri}/{filePath.TrimStart('/')}");
+        client.Write(new SvnUriTarget(fullUri, long.Parse(revision)), stream);
+
         return Task.FromResult(Encoding.UTF8.GetString(stream.ToArray()));
     }
 
-    public Task<FileBlameInfo> GetBlameAsync(string repoPath, string filePath, string revision, CancellationToken ct)
+    public Task<FileBlameInfo> GetBlameAsync(
+        string repoPath, string filePath, string revision, CancellationToken ct)
     {
         using var client = CreateClient();
+
+        var fullUri   = new Uri($"{_repositoryUri}/{filePath.TrimStart('/')}");
         var blameArgs = new SvnBlameArgs
         {
             Start = new SvnRevision(1),
@@ -85,7 +102,7 @@ public sealed class SvnVcsProvider : IVcsProvider
         };
 
         SvnBlameEventArgs? firstLine = null;
-        client.Blame(new SvnPathTarget(filePath), blameArgs, (_, args) =>
+        client.Blame(new SvnUriTarget(fullUri), blameArgs, (_, args) =>
         {
             firstLine ??= args;
         });
@@ -93,12 +110,14 @@ public sealed class SvnVcsProvider : IVcsProvider
         if (firstLine is null)
             throw new InvalidOperationException($"No blame information found for '{filePath}'.");
 
+        var commitMessage = GetLogMessage(client, repoPath, firstLine.Revision);
+
         return Task.FromResult(new FileBlameInfo
         {
             FilePath      = filePath,
             Revision      = firstLine.Revision.ToString(),
             Author        = firstLine.Author ?? string.Empty,
-            CommitMessage = string.Empty, // SvnBlameEventArgs does not carry log messages
+            CommitMessage = commitMessage,
             Timestamp     = firstLine.Time
         });
     }
@@ -107,22 +126,47 @@ public sealed class SvnVcsProvider : IVcsProvider
         string repoPath, string sinceRevision, CancellationToken ct)
     {
         using var client = CreateClient();
+
         var logArgs = new SvnLogArgs
         {
-            Start          = new SvnRevision(long.Parse(sinceRevision) + 1),
-            End            = SvnRevision.Head,
+            Start                = new SvnRevision(long.Parse(sinceRevision) + 1),
+            End                  = SvnRevision.Head,
             RetrieveChangedPaths = true
         };
 
-        var changedPaths = new Dictionary<string, Domain.Enums.ChangeType>();
+        // Determine the repository root to strip it from absolute paths.
+        client.GetInfo(new SvnPathTarget(repoPath), out SvnInfoEventArgs info);
+        var repoRoot = info.RepositoryRoot?.ToString().TrimEnd('/') ?? string.Empty;
+
+        // The "trunk" prefix within the repo: _repositoryUri relative to repoRoot
+        // e.g. repoRoot = "https://svn.example.com/repos/proj"
+        //      _repositoryUri = "https://svn.example.com/repos/proj/trunk"
+        //      trunkPrefix = "/trunk"
+        var trunkPrefix = _repositoryUri.Length > repoRoot.Length
+            ? _repositoryUri[repoRoot.Length..]   // e.g. "/trunk"
+            : string.Empty;
+
+        var changedPaths = new Dictionary<string, Domain.Enums.ChangeType>(StringComparer.OrdinalIgnoreCase);
+
         client.Log(repoPath, logArgs, (_, args) =>
         {
             if (args.ChangedPaths is null) return;
             foreach (var item in args.ChangedPaths)
             {
-                var changeType = MapSvnAction(item.Action);
-                // last writer wins for a path that appears in multiple revisions
-                changedPaths[item.Path] = changeType;
+                // item.Path is an absolute repo path, e.g. "/trunk/src/Foo.cs"
+                // Strip trunkPrefix to get relative path "src/Foo.cs"
+                var relativePath = item.Path;
+                if (!string.IsNullOrEmpty(trunkPrefix) &&
+                    relativePath.StartsWith(trunkPrefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    relativePath = relativePath[trunkPrefix.Length..].TrimStart('/');
+                }
+
+                // Skip files outside our trunk/branch scope
+                if (string.IsNullOrWhiteSpace(relativePath)) continue;
+
+                // Last writer wins for a path that appears in multiple revisions
+                changedPaths[relativePath] = MapSvnAction(item.Action);
             }
         });
 
@@ -134,6 +178,24 @@ public sealed class SvnVcsProvider : IVcsProvider
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
+
+    private static string GetLogMessage(SvnClient client, string repoPath, SvnRevision revision)
+    {
+        var logArgs = new SvnLogArgs
+        {
+            Start = revision,
+            End   = revision,
+            Limit = 1
+        };
+
+        string message = string.Empty;
+        client.Log(repoPath, logArgs, (_, args) =>
+        {
+            message = args.LogMessage ?? string.Empty;
+        });
+
+        return message;
+    }
 
     private SvnClient CreateClient()
     {

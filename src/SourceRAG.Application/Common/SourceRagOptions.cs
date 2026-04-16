@@ -22,11 +22,18 @@ public sealed class SourceRagOptions
 
     public required string VcsProvider       { get; init; }   // "Git" | "Svn"
     public required string EmbeddingProvider { get; init; }   // "Local" | "Api"
+    public string LlmProvider               { get; init; } = "Anthropic"; // "Anthropic" | "OpenAiCompatible" | "Local"
     public required string RepositoryPath    { get; init; }
+    /// <summary>
+    /// Full SVN repository URI, e.g. "https://svn.example.com/repos/myproject/trunk".
+    /// Required when VcsProvider is "Svn".
+    /// </summary>
+    public string RepositoryUri             { get; init; } = string.Empty;
     public string Branch                     { get; init; } = "main";
     public QdrantOptions Qdrant              { get; init; } = new();
     public LlamaSharpOptions LlamaSharp      { get; init; } = new();
     public AnthropicOptions Anthropic        { get; init; } = new();
+    public OpenAiCompatibleOptions OpenAiCompatible { get; init; } = new();
     public AzureAdOptions AzureAd            { get; init; } = new();
     public ChunkingOptions Chunking          { get; init; } = new();
 }
@@ -39,7 +46,19 @@ public sealed class QdrantOptions
 
 public sealed class LlamaSharpOptions
 {
-    public string ModelPath { get; init; } = string.Empty;
+    public string ModelPath    { get; init; } = string.Empty; // embedding model
+    public string LlmModelPath { get; init; } = string.Empty; // chat model
+}
+
+/// <summary>
+/// Configuration for an OpenAI-compatible LLM endpoint
+/// (Groq, Together AI, Mistral, Azure OpenAI, OpenAI, etc.).
+/// API key is read from env var SOURCERAG_LLM_API_KEY at runtime.
+/// </summary>
+public sealed class OpenAiCompatibleOptions
+{
+    public string BaseUrl { get; init; } = string.Empty;
+    public string Model   { get; init; } = string.Empty;
 }
 
 public sealed class AnthropicOptions

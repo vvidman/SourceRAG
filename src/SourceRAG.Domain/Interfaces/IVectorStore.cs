@@ -24,5 +24,10 @@ public interface IVectorStore
     Task UpsertAsync(Guid pointId, float[] vector, ChunkMetadata metadata, CancellationToken ct);
     Task<IReadOnlyList<ScoredChunk>> SearchAsync(float[] queryVector, int topK, CancellationToken ct);
     Task DeleteAsync(Guid pointId, CancellationToken ct);
+    /// <summary>
+    /// Deletes all points whose payload contains file_path == <paramref name="filePath"/>.
+    /// Used to clean up chunks when a file is deleted from the repository.
+    /// </summary>
+    Task DeleteByFilePathAsync(string filePath, CancellationToken ct);
     Task<int> CountAsync(CancellationToken ct);
 }

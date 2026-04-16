@@ -20,24 +20,27 @@ using Microsoft.Extensions.Options;
 using SourceRAG.Application.Common;
 using SourceRAG.Domain.Interfaces;
 
-namespace SourceRAG.Infrastructure.Llm;
+namespace SourceRAG.Infrastructure.Llm.Api;
 
 public sealed class AnthropicLlmProvider : ILlmProvider
 {
     private readonly AnthropicOptions _options;
+    private readonly AnthropicClient  _client;
 
     public AnthropicLlmProvider(IOptions<SourceRagOptions> options)
     {
         _options = options.Value.Anthropic;
+
+        var apiKey = Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY")
+            ?? throw new InvalidOperationException(
+                "ANTHROPIC_API_KEY environment variable is not set. " +
+                "Set it before starting the application.");
+
+        _client = new AnthropicClient(new APIAuthentication(apiKey));
     }
 
     public async Task<string> CompleteAsync(string systemPrompt, string userMessage, CancellationToken ct)
     {
-        var apiKey = Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY")
-            ?? throw new InvalidOperationException("ANTHROPIC_API_KEY environment variable is not set.");
-
-        var client = new AnthropicClient(new APIAuthentication(apiKey));
-
         var parameters = new MessageParameters
         {
             Model     = _options.Model,
@@ -46,7 +49,7 @@ public sealed class AnthropicLlmProvider : ILlmProvider
             Messages  = [new Message(RoleType.User, userMessage, null!)]
         };
 
-        var response = await client.Messages.GetClaudeMessageAsync(parameters, ct);
+        var response = await _client.Messages.GetClaudeMessageAsync(parameters, ct);
 
         return response.FirstMessage.Text;
     }

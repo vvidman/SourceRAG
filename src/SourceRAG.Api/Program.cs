@@ -64,6 +64,10 @@ using (var scope = app.Services.CreateScope())
 {
     var vectorStore       = scope.ServiceProvider.GetRequiredService<IVectorStore>();
     var embeddingProvider = scope.ServiceProvider.GetRequiredService<IEmbeddingProvider>();
+
+    // Must initialise before reading Dimensions — LlamaSharp lazy-loads the model
+    await embeddingProvider.InitializeAsync(CancellationToken.None);
+
     await vectorStore.EnsureCollectionAsync(embeddingProvider.Dimensions, CancellationToken.None);
 }
 

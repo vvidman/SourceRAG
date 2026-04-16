@@ -91,41 +91,23 @@ public class IndexRepositoryHandlerTests
     public async Task Handle_DeletedFile_CallsVectorStoreDelete()
     {
         var deletedFile = new ChangedFile("src/Foo.cs", ChangeType.Deleted);
-        var blame = new FileBlameInfo
-        {
-            FilePath = "src/Foo.cs",
-            Revision = "rev-001",
-            Author = "dev",
-            CommitMessage = "msg",
-            Timestamp = DateTimeOffset.UtcNow
-        };
-        var chunk = new CodeChunk("text", new ChunkMetadata
-        {
-            FilePath = "src/Foo.cs",
-            Revision = "rev-001",
-            Author = "dev",
-            CommitMessage = "msg",
-            Timestamp = DateTimeOffset.UtcNow,
-            Branch = "main"
-        });
 
         _indexStateStore.GetLastIndexedRevisionAsync(RepoPath, Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<string?>("rev-001"));
         _reindexStrategy.DetermineChangedFilesAsync(RepoPath, "rev-001", Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new ReindexScope(new[] { deletedFile }, "rev-001", "rev-002")));
-        _vcsProvider.GetFileContentAsync(RepoPath, "src/Foo.cs", "rev-001", Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult("class Foo {}"));
-        _vcsProvider.GetBlameAsync(RepoPath, "src/Foo.cs", "rev-001", Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(blame));
-        _chunker.CanHandle("src/Foo.cs").Returns(true);
-        _chunker.Chunk(Arg.Any<string>(), Arg.Any<ChunkMetadata>())
-            .Returns(new List<CodeChunk> { chunk });
-        _vectorStore.DeleteAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+        _vectorStore.DeleteByFilePathAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
 
         await _handler.Handle(new IndexRepositoryCommand(FullReindex: false), CancellationToken.None);
 
-        await _vectorStore.Received(1).DeleteAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+        // Verify filter-based delete — no VCS access needed
+        await _vectorStore.Received(1)
+            .DeleteByFilePathAsync("src/Foo.cs", Arg.Any<CancellationToken>());
+
+        // Verify NO VCS calls for the deleted file
+        await _vcsProvider.DidNotReceive()
+            .GetFileContentAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
