@@ -88,7 +88,10 @@ public sealed class GitVcsProvider : IVcsProvider
         var diff    = repo.Diff.Compare<TreeChanges>(oldTree, newTree);
 
         var changes = diff
-            .Select(e => new ChangedFile(e.Path, MapChangeKind(e.Status)))
+            .Select(e => new ChangedFile(
+                e.Path,
+                MapChangeKind(e.Status),
+                OldPath: e.Status == ChangeKind.Renamed ? e.OldPath : null))
             .ToList();
 
         return Task.FromResult<IReadOnlyList<ChangedFile>>(changes);

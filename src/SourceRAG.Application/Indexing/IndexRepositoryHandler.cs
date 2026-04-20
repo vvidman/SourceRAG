@@ -72,13 +72,26 @@ public sealed class IndexRepositoryHandler : IRequestHandler<IndexRepositoryComm
 
                 foreach (var file in scope.ChangedFiles)
                 {
-                    if (file.ChangeType == ChangeType.Deleted)
+                    switch (file.ChangeType)
                     {
-                        await _vectorStore.DeleteByFilePathAsync(file.Path, ct);
-                        context.DeletedChunkCount++;
+                        case ChangeType.Deleted:
+                            await _vectorStore.DeleteByFilePathAsync(file.Path, ct);
+                            context.DeletedChunkCount++;
+                            break;
+
+                        case ChangeType.Renamed:
+                            if (file.OldPath is not null)
+                            {
+                                await _vectorStore.DeleteByFilePathAsync(file.OldPath, ct);
+                                context.DeletedChunkCount++;
+                            }
+                            await ProcessFileAsync(repoPath, file.Path, scope.ToRevision, branch, context, ct);
+                            break;
+
+                        default:
+                            await ProcessFileAsync(repoPath, file.Path, scope.ToRevision, branch, context, ct);
+                            break;
                     }
-                    else
-                        await ProcessFileAsync(repoPath, file.Path, scope.ToRevision, branch, context, ct);
                 }
             }
             else

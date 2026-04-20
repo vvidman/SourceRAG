@@ -146,38 +146,53 @@ public sealed class SvnVcsProvider : IVcsProvider
             ? _repositoryUri[repoRoot.Length..]   // e.g. "/trunk"
             : string.Empty;
 
-        var changedPaths = new Dictionary<string, Domain.Enums.ChangeType>(StringComparer.OrdinalIgnoreCase);
+        var changedFiles = new List<ChangedFile>();
+        var seenPaths    = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
         client.Log(repoPath, logArgs, (_, args) =>
         {
             if (args.ChangedPaths is null) return;
             foreach (var item in args.ChangedPaths)
             {
-                // item.Path is an absolute repo path, e.g. "/trunk/src/Foo.cs"
-                // Strip trunkPrefix to get relative path "src/Foo.cs"
-                var relativePath = item.Path;
-                if (!string.IsNullOrEmpty(trunkPrefix) &&
-                    relativePath.StartsWith(trunkPrefix, StringComparison.OrdinalIgnoreCase))
-                {
-                    relativePath = relativePath[trunkPrefix.Length..].TrimStart('/');
-                }
-
-                // Skip files outside our trunk/branch scope
+                var relativePath = NormaliseToRelative(item.Path, trunkPrefix);
                 if (string.IsNullOrWhiteSpace(relativePath)) continue;
 
-                // Last writer wins for a path that appears in multiple revisions
-                changedPaths[relativePath] = MapSvnAction(item.Action);
+                var changeType = MapSvnAction(item.Action);
+
+                string? oldPath = null;
+                if (changeType == Domain.Enums.ChangeType.Renamed &&
+                    item.CopyFromPath is not null)
+                {
+                    oldPath = NormaliseToRelative(item.CopyFromPath, trunkPrefix);
+                }
+
+                var entry = new ChangedFile(relativePath, changeType, oldPath);
+
+                if (seenPaths.TryGetValue(relativePath, out var existingIdx))
+                    changedFiles[existingIdx] = entry;
+                else
+                {
+                    seenPaths[relativePath] = changedFiles.Count;
+                    changedFiles.Add(entry);
+                }
             }
         });
 
-        var result = changedPaths
-            .Select(kv => new ChangedFile(kv.Key, kv.Value))
-            .ToList();
-
-        return Task.FromResult<IReadOnlyList<ChangedFile>>(result);
+        return Task.FromResult<IReadOnlyList<ChangedFile>>(changedFiles);
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
+
+    private static string NormaliseToRelative(string absolutePath, string trunkPrefix)
+    {
+        var relative = absolutePath;
+        if (!string.IsNullOrEmpty(trunkPrefix) &&
+            relative.StartsWith(trunkPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            relative = relative[trunkPrefix.Length..].TrimStart('/');
+        }
+        return relative;
+    }
 
     private static string GetLogMessage(SvnClient client, string repoPath, SvnRevision revision)
     {

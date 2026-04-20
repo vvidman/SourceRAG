@@ -28,10 +28,12 @@ public sealed class LlamaSharpLlmProvider : ILlmProvider, IAsyncDisposable
 {
     private readonly LlamaSharpOptions _options;
     private readonly ILogger<LlamaSharpLlmProvider> _logger;
-    private readonly SemaphoreSlim _initLock = new(1, 1);
+    private readonly SemaphoreSlim _initLock      = new(1, 1);
+    private readonly SemaphoreSlim _inferenceLock = new(1, 1);
 
-    private LLamaWeights? _weights;
-    private bool          _initialized;
+    private LLamaWeights?      _weights;
+    private StatelessExecutor? _executor;
+    private bool               _initialized;
 
     public LlamaSharpLlmProvider(
         IOptions<SourceRagOptions> options,
@@ -50,25 +52,33 @@ public sealed class LlamaSharpLlmProvider : ILlmProvider, IAsyncDisposable
     {
         await EnsureInitializedAsync(ct);
 
-        var prompt      = BuildPrompt(systemPrompt, userMessage);
-        var executor    = new StatelessExecutor(_weights!, new ModelParams(_options.LlmModelPath));
-        var inferParams = new InferenceParams
+        await _inferenceLock.WaitAsync(ct);
+        try
         {
-            MaxTokens        = 2048,
-            SamplingPipeline = new DefaultSamplingPipeline()
-        };
+            var prompt      = BuildPrompt(systemPrompt, userMessage);
+            var inferParams = new InferenceParams
+            {
+                MaxTokens        = 2048,
+                SamplingPipeline = new DefaultSamplingPipeline()
+            };
 
-        var sb = new System.Text.StringBuilder();
-        await foreach (var token in executor.InferAsync(prompt, inferParams, ct))
-            sb.Append(token);
+            var sb = new System.Text.StringBuilder();
+            await foreach (var token in _executor!.InferAsync(prompt, inferParams, ct))
+                sb.Append(token);
 
-        return sb.ToString().Trim();
+            return sb.ToString().Trim();
+        }
+        finally
+        {
+            _inferenceLock.Release();
+        }
     }
 
     public async ValueTask DisposeAsync()
     {
         _weights?.Dispose();
         _initLock.Dispose();
+        _inferenceLock.Dispose();
         await ValueTask.CompletedTask;
     }
 
@@ -83,7 +93,9 @@ public sealed class LlamaSharpLlmProvider : ILlmProvider, IAsyncDisposable
             if (_initialized) return;
             _logger.LogInformation(
                 "Loading LlamaSharp LLM model from {Path}", _options.LlmModelPath);
-            _weights     = LLamaWeights.LoadFromFile(new ModelParams(_options.LlmModelPath));
+            var modelParams = new ModelParams(_options.LlmModelPath);
+            _weights     = LLamaWeights.LoadFromFile(modelParams);
+            _executor    = new StatelessExecutor(_weights, modelParams);
             _initialized = true;
 
             var hasTemplate = _weights.Metadata.ContainsKey("tokenizer.chat_template");

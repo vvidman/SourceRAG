@@ -18,4 +18,13 @@ using SourceRAG.Domain.Enums;
 
 namespace SourceRAG.Domain.Entities;
 
-public sealed record ChangedFile(string Path, ChangeType ChangeType);
+/// <param name="Path">The current (new) path of the file.</param>
+/// <param name="ChangeType">The type of change.</param>
+/// <param name="OldPath">
+///   The previous path, populated only when <paramref name="ChangeType"/> is
+///   <see cref="ChangeType.Renamed"/>. Null for all other change types.
+/// </param>
+public sealed record ChangedFile(
+    string Path,
+    ChangeType ChangeType,
+    string? OldPath = null);

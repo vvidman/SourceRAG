@@ -110,7 +110,7 @@ public sealed class QdrantVectorStore : IVectorStore
                     Field = new FieldCondition
                     {
                         Key   = "file_path",
-                        Match = new Match { Text = filePath }
+                        Match = new Match { Keyword = filePath }
                     }
                 }
             }

@@ -77,6 +77,11 @@ public static class InfrastructureServiceExtensions
                 "SourceRAG:RepositoryUri is required when VcsProvider is 'Svn'. " +
                 "Example: https://svn.example.com/repos/myproject/trunk");
 
+        if (opts.EmbeddingProvider is not ("Local" or "Api"))
+            throw new InvalidOperationException(
+                $"SourceRAG:EmbeddingProvider '{opts.EmbeddingProvider}' is invalid. " +
+                "Valid values: Local, Api.");
+
         if (opts.EmbeddingProvider == "Local" && string.IsNullOrWhiteSpace(opts.LlamaSharp.ModelPath))
             throw new InvalidOperationException(
                 "SourceRAG:LlamaSharp:ModelPath is required when EmbeddingProvider is 'Local'.");

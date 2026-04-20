@@ -22,21 +22,34 @@ using SourceRAG.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services
-    .AddAuthentication(OpenIdConnectDefaults.AuthenticationScheme)
-    .AddMicrosoftIdentityWebApp(builder.Configuration.GetSection("AzureAd"))
-    .EnableTokenAcquisitionToCallDownstreamApi()
-    .AddDownstreamApi("SourceRagApi", builder.Configuration.GetSection("SourceRagApi"))
-    .AddInMemoryTokenCaches();
+if (builder.Environment.IsDevelopment())
+{
+    // Dev mode: bypass Entra ID, use plain HttpClient (API has FallbackPolicy = AllowAll in dev)
+    builder.Services.AddAuthentication();
+    builder.Services.AddAuthorization();
+    builder.Services.AddHttpClient<SourceRagApiClient>(client =>
+    {
+        client.BaseAddress = new Uri(
+            builder.Configuration["SourceRagApi:BaseUrl"] ?? "https://localhost:7001");
+    });
+}
+else
+{
+    // Production: full Entra ID OIDC with token forwarding
+    builder.Services
+        .AddAuthentication(OpenIdConnectDefaults.AuthenticationScheme)
+        .AddMicrosoftIdentityWebApp(builder.Configuration.GetSection("AzureAd"))
+        .EnableTokenAcquisitionToCallDownstreamApi()
+        .AddDownstreamApi("SourceRagApi", builder.Configuration.GetSection("SourceRagApi"))
+        .AddInMemoryTokenCaches();
 
-builder.Services.AddAuthorization();
-builder.Services.AddControllersWithViews().AddMicrosoftIdentityUI();
+    builder.Services.AddAuthorization();
+    builder.Services.AddControllersWithViews().AddMicrosoftIdentityUI();
+    builder.Services.AddScoped<SourceRagApiClient>();
+}
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
-
-// IDownstreamApi (registered via AddDownstreamApi above) handles token acquisition automatically
-builder.Services.AddScoped<SourceRagApiClient>();
 
 var app = builder.Build();
 
