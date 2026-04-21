@@ -18,8 +18,14 @@ namespace SourceRAG.Domain.Entities;
 
 public sealed record IndexStatus
 {
-    public string? LastIndexedRevision { get; init; }
-    public int ChunkCount              { get; init; }
-    public DateTimeOffset? LastIndexedAt { get; init; }
-    public bool IsIndexing             { get; init; }
+    public string?         LastIndexedRevision { get; init; }
+    public int             ChunkCount          { get; init; }
+    public DateTimeOffset? LastIndexedAt       { get; init; }
+    public bool            IsIndexing          { get; init; }
+
+    // Progress — only populated when IsIndexing is true
+    public int?    TotalFiles      { get; init; }
+    public int?    ProcessedFiles  { get; init; }
+    public int?    ProgressPercent { get; init; }
+    public string? CurrentFile     { get; init; }
 }

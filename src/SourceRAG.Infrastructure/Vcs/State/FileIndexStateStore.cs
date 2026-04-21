@@ -76,15 +76,22 @@ public sealed class FileIndexStateStore : IIndexStateStore
     }
 
     public async Task SaveCheckpointAsync(
-        string repoPath, string revision, string lastProcessedFile, CancellationToken ct)
+        string repoPath,
+        string revision,
+        string lastProcessedFile,
+        int    totalFiles,
+        int    processedFiles,
+        CancellationToken ct)
     {
         var existing = await ReadStateAsync(repoPath, ct);
         var updated  = new IndexState
         {
-            LastIndexedRevision = existing?.LastIndexedRevision,
-            LastIndexedAt       = existing?.LastIndexedAt,
-            CheckpointRevision  = revision,
-            CheckpointLastFile  = lastProcessedFile
+            LastIndexedRevision      = existing?.LastIndexedRevision,
+            LastIndexedAt            = existing?.LastIndexedAt,
+            CheckpointRevision       = revision,
+            CheckpointLastFile       = lastProcessedFile,
+            CheckpointTotalFiles     = totalFiles,
+            CheckpointProcessedFiles = processedFiles
         };
         await WriteStateAsync(repoPath, updated, ct);
     }
@@ -94,7 +101,11 @@ public sealed class FileIndexStateStore : IIndexStateStore
         var state = await ReadStateAsync(repoPath, ct);
         if (state?.CheckpointRevision is null || state.CheckpointLastFile is null)
             return null;
-        return new IndexCheckpoint(state.CheckpointRevision, state.CheckpointLastFile);
+        return new IndexCheckpoint(
+            state.CheckpointRevision,
+            state.CheckpointLastFile,
+            state.CheckpointTotalFiles     ?? 0,
+            state.CheckpointProcessedFiles ?? 0);
     }
 
     public async Task ClearCheckpointAsync(string repoPath, CancellationToken ct)
@@ -103,10 +114,12 @@ public sealed class FileIndexStateStore : IIndexStateStore
         if (existing is null) return;
         await WriteStateAsync(repoPath, new IndexState
         {
-            LastIndexedRevision = existing.LastIndexedRevision,
-            LastIndexedAt       = existing.LastIndexedAt,
-            CheckpointRevision  = null,
-            CheckpointLastFile  = null
+            LastIndexedRevision      = existing.LastIndexedRevision,
+            LastIndexedAt            = existing.LastIndexedAt,
+            CheckpointRevision       = null,
+            CheckpointLastFile       = null,
+            CheckpointTotalFiles     = null,
+            CheckpointProcessedFiles = null
         }, ct);
     }
 
@@ -114,10 +127,11 @@ public sealed class FileIndexStateStore : IIndexStateStore
 
     private sealed class IndexState
     {
-        public string?         LastIndexedRevision { get; init; }
-        public DateTimeOffset? LastIndexedAt       { get; init; }
-        // Checkpoint fields — null when no in-progress run exists
-        public string?         CheckpointRevision  { get; init; }
-        public string?         CheckpointLastFile  { get; init; }
+        public string?         LastIndexedRevision      { get; init; }
+        public DateTimeOffset? LastIndexedAt            { get; init; }
+        public string?         CheckpointRevision       { get; init; }
+        public string?         CheckpointLastFile       { get; init; }
+        public int?            CheckpointTotalFiles     { get; init; }
+        public int?            CheckpointProcessedFiles { get; init; }
     }
 }

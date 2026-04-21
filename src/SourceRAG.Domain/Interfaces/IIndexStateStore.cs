@@ -28,7 +28,13 @@ public interface IIndexStateStore
     /// Saves a mid-run checkpoint. Called after each successfully processed file
     /// during a full reindex so the run can resume after a crash.
     /// </summary>
-    Task SaveCheckpointAsync(string repoPath, string revision, string lastProcessedFile, CancellationToken ct);
+    Task SaveCheckpointAsync(
+        string repoPath,
+        string revision,
+        string lastProcessedFile,
+        int    totalFiles,
+        int    processedFiles,
+        CancellationToken ct);
 
     /// <summary>
     /// Returns the current checkpoint for the given repo, or null if none exists.

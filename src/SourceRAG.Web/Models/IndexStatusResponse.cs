@@ -17,7 +17,12 @@
 namespace SourceRAG.Web.Models;
 
 public sealed record IndexStatusResponse(
-    string? LastIndexedRevision,
-    int ChunkCount,
+    string?         LastIndexedRevision,
+    int             ChunkCount,
     DateTimeOffset? LastIndexedAt,
-    bool IsIndexing);
+    bool            IsIndexing,
+    // Progress fields — null when not indexing
+    int?            TotalFiles,
+    int?            ProcessedFiles,
+    int?            ProgressPercent,
+    string?         CurrentFile);

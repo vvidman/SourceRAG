@@ -42,17 +42,30 @@ public sealed class GetIndexStatusHandler : IRequestHandler<GetIndexStatusQuery,
     {
         var repoPath = _options.Value.RepositoryPath;
 
-        var lastRevision = await _indexStateStore.GetLastIndexedRevisionAsync(repoPath, ct);
+        var lastRevision  = await _indexStateStore.GetLastIndexedRevisionAsync(repoPath, ct);
         var lastIndexedAt = lastRevision is not null
             ? await _indexStateStore.GetLastIndexedAtAsync(repoPath, ct)
             : null;
-        var chunkCount = await _vectorStore.CountAsync(ct);
+        var chunkCount    = await _vectorStore.CountAsync(ct);
+        var checkpoint    = await _indexStateStore.GetCheckpointAsync(repoPath, ct);
+
+        var isIndexing = checkpoint is not null;
+
+        int? progressPercent = null;
+        if (isIndexing && checkpoint!.TotalFiles > 0)
+            progressPercent = (int)Math.Round(
+                checkpoint.ProcessedFiles * 100.0 / checkpoint.TotalFiles);
 
         return new IndexStatus
         {
             LastIndexedRevision = lastRevision,
-            ChunkCount = chunkCount,
-            LastIndexedAt = lastIndexedAt
+            ChunkCount          = chunkCount,
+            LastIndexedAt       = lastIndexedAt,
+            IsIndexing          = isIndexing,
+            TotalFiles          = isIndexing ? checkpoint!.TotalFiles      : null,
+            ProcessedFiles      = isIndexing ? checkpoint!.ProcessedFiles  : null,
+            ProgressPercent     = progressPercent,
+            CurrentFile         = isIndexing ? checkpoint!.LastProcessedFile : null
         };
     }
 }

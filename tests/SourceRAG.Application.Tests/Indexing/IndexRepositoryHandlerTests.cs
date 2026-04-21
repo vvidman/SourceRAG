@@ -210,9 +210,10 @@ public class IndexRepositoryHandlerTests
 
         // Checkpoint says A.cs was already processed at rev-head
         _indexStateStore.GetCheckpointAsync(RepoPath, Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<IndexCheckpoint?>(new IndexCheckpoint("rev-head", "src/A.cs")));
+            .Returns(Task.FromResult<IndexCheckpoint?>(new IndexCheckpoint("rev-head", "src/A.cs", TotalFiles: 2, ProcessedFiles: 1)));
         _indexStateStore.SaveCheckpointAsync(
-            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
         _indexStateStore.ClearCheckpointAsync(RepoPath, Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
@@ -251,7 +252,7 @@ public class IndexRepositoryHandlerTests
 
         // Checkpoint is for an old revision — must be ignored
         _indexStateStore.GetCheckpointAsync(RepoPath, Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<IndexCheckpoint?>(new IndexCheckpoint("rev-old", "src/A.cs")));
+            .Returns(Task.FromResult<IndexCheckpoint?>(new IndexCheckpoint("rev-old", "src/A.cs", TotalFiles: 5, ProcessedFiles: 2)));
         _indexStateStore.ClearCheckpointAsync(RepoPath, Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
 

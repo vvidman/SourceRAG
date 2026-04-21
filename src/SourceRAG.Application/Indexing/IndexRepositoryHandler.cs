@@ -121,11 +121,8 @@ public sealed class IndexRepositoryHandler : IRequestHandler<IndexRepositoryComm
     private async Task<string> FullReindexAsync(
         string repoPath, string branch, PipelineContext context, CancellationToken ct)
     {
-        // Capture the target revision before the loop so that the checkpoint
-        // revision stays consistent even if HEAD moves during a long run.
         var toRevision = _vcsProvider.GetCurrentRevision(repoPath);
 
-        // Check for a checkpoint from a previously crashed run at the same revision.
         var checkpoint      = await _indexStateStore.GetCheckpointAsync(repoPath, ct);
         var resumeAfterFile = (checkpoint?.Revision == toRevision)
             ? checkpoint.LastProcessedFile
@@ -133,29 +130,40 @@ public sealed class IndexRepositoryHandler : IRequestHandler<IndexRepositoryComm
 
         if (resumeAfterFile is not null)
             _logger.LogInformation(
-                "Resuming full reindex from checkpoint. " +
-                "Skipping files up to and including: {File}", resumeAfterFile);
+                "Resuming full reindex from checkpoint after file: {File}", resumeAfterFile);
 
         var files            = await _vcsProvider.GetFilesAtHeadAsync(repoPath, ct);
+        var totalFiles       = files.Count;
         var skipUntilResumed = resumeAfterFile is not null;
+
+        // When resuming, start processed count from checkpoint value
+        var processedFiles = (resumeAfterFile is not null)
+            ? checkpoint!.ProcessedFiles
+            : 0;
 
         foreach (var file in files)
         {
-            // Skip already-processed files when resuming from checkpoint.
             if (skipUntilResumed)
             {
                 if (file.Path == resumeAfterFile)
                     skipUntilResumed = false;
+                processedFiles++;
                 continue;
             }
 
             await ProcessFileAsync(repoPath, file.Path, file.Revision, branch, context, ct);
 
-            // Persist progress after every successfully processed file.
-            await _indexStateStore.SaveCheckpointAsync(repoPath, toRevision, file.Path, ct);
+            processedFiles++;
+
+            await _indexStateStore.SaveCheckpointAsync(
+                repoPath, toRevision, file.Path,
+                totalFiles, processedFiles, ct);
+
+            _logger.LogInformation(
+                "Indexed [{Done}/{Total}] {File}",
+                processedFiles, totalFiles, file.Path);
         }
 
-        // Run completed successfully — remove the checkpoint.
         await _indexStateStore.ClearCheckpointAsync(repoPath, ct);
 
         return toRevision;

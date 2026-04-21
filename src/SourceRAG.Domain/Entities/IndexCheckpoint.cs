@@ -22,7 +22,7 @@ namespace SourceRAG.Domain.Entities;
 /// run can resume from the last known-good position.
 /// </summary>
 public sealed record IndexCheckpoint(
-    /// <summary>The target VCS revision this reindex run is processing.</summary>
     string Revision,
-    /// <summary>The path of the last successfully processed file.</summary>
-    string LastProcessedFile);
+    string LastProcessedFile,
+    int    TotalFiles,
+    int    ProcessedFiles);
