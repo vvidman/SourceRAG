@@ -110,4 +110,24 @@ public sealed class GitVcsProviderTests : IDisposable
         Assert.Equal("hello.txt", changed[0].Path);
         Assert.Equal(ChangeType.Modified, changed[0].ChangeType);
     }
+
+    [Fact]
+    public async Task GetChangedFilesSince_RenamedFile_IncludesOldPath()
+    {
+        // Create a second commit that renames hello.txt → world.txt
+        File.Move(
+            Path.Combine(_repoPath, "hello.txt"),
+            Path.Combine(_repoPath, "world.txt"));
+        using var repo = new Repository(_repoPath);
+        Commands.Stage(repo, "*");
+        repo.Commit("Rename hello.txt to world.txt", TestSig, TestSig);
+
+        var changed = await _sut.GetChangedFilesSinceAsync(
+            _repoPath, _initialSha, CancellationToken.None);
+
+        var renamed = changed.FirstOrDefault(f => f.ChangeType == ChangeType.Renamed);
+        Assert.NotNull(renamed);
+        Assert.Equal("world.txt", renamed!.Path);
+        Assert.Equal("hello.txt", renamed.OldPath);
+    }
 }

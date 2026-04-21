@@ -71,38 +71,34 @@ Next milestone: production hardening — Qdrant collection version migration, ob
 
 ## Getting Started
 
+### 1. Copy and fill in the environment file
 ```bash
-git clone https://github.com/vvidman/SourceRAG.git
-cd SourceRAG
-
-# Start Qdrant
-docker run -d -p 6333:6333 qdrant/qdrant
-
-# Configure the host (minimum required keys):
-#   src/SourceRAG.Api/appsettings.json
-#
-#   "VcsProvider":       "Git"            # or "Svn"
-#   "EmbeddingProvider": "Local"          # or "Api"
-#   "LlmProvider":       "Anthropic"      # or "OpenAiCompatible" or "Local"
-#   "RepositoryPath":    "/path/to/repo"  # local working copy
-#   "RepositoryUri":     ""               # SVN only: full trunk URI
-#
-#   LlamaSharp.ModelPath    — required when EmbeddingProvider = "Local"
-#   LlamaSharp.LlmModelPath — required when LlmProvider = "Local"
-#   OpenAiCompatible.BaseUrl / .Model — required when LlmProvider = "OpenAiCompatible"
-
-# Environment variables (set as needed):
-#   ANTHROPIC_API_KEY       — EmbeddingProvider=Api or LlmProvider=Anthropic
-#   SOURCERAG_LLM_API_KEY   — LlmProvider=OpenAiCompatible
-
-dotnet run --project src/SourceRAG.Api
-
-# Optional — MCP server (separate terminal)
-dotnet run --project src/SourceRAG.McpHost
-
-# Optional — Blazor client (separate terminal)
-dotnet run --project src/SourceRAG.Web
+cp .env.example .env
+# Edit .env — set REPO_PATH, EMBED_MODEL_PATH, LLM_MODEL_PATH
 ```
+
+### 2. Start all services
+```bash
+docker compose up --build
+```
+
+### 3. Trigger initial index (once services are up)
+```bash
+curl -X POST http://localhost:7001/index \
+  -H "Content-Type: application/json" \
+  -d '{"fullReindex": true}'
+```
+
+### 4. Open the chat UI
+http://localhost:7003
+
+### Service ports
+| Service | URL |
+|---|---|
+| REST API | http://localhost:7001 |
+| MCP server | http://localhost:7002/mcp |
+| Blazor Web UI | http://localhost:7003 |
+| Qdrant dashboard | http://localhost:6333/dashboard |
 
 **Prerequisites:** .NET 10 SDK · Docker (Qdrant)
 

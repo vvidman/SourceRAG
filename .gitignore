@@ -58,3 +58,6 @@ nunit-*.xml
 
 # VisualStudio
 .vs/
+
+# Docker
+.env

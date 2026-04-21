@@ -125,6 +125,66 @@ public class IndexRepositoryHandlerTests
     }
 
     [Fact]
+    public async Task Handle_RenamedFile_DeletesOldPathAndIndexesNewPath()
+    {
+        var renamedFile = new ChangedFile(
+            Path:       "src/Domain/Foo.cs",
+            ChangeType: ChangeType.Renamed,
+            OldPath:    "src/Core/Foo.cs");
+
+        var blame = new FileBlameInfo
+        {
+            FilePath      = "src/Domain/Foo.cs",
+            Revision      = "rev-002",
+            Author        = "dev",
+            CommitMessage = "move Foo to Domain",
+            Timestamp     = DateTimeOffset.UtcNow
+        };
+        var chunk = new CodeChunk("class Foo {}", new ChunkMetadata
+        {
+            FilePath      = "src/Domain/Foo.cs",
+            Revision      = "rev-002",
+            Author        = "dev",
+            CommitMessage = "move Foo to Domain",
+            Timestamp     = DateTimeOffset.UtcNow,
+            Branch        = "main"
+        });
+
+        _indexStateStore.GetLastIndexedRevisionAsync(RepoPath, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<string?>("rev-001"));
+        _reindexStrategy.DetermineChangedFilesAsync(RepoPath, "rev-001", Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new ReindexScope(
+                new[] { renamedFile }, "rev-001", "rev-002")));
+        _vectorStore.DeleteByFilePathAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+        _vcsProvider.GetFileContentAsync(RepoPath, "src/Domain/Foo.cs", "rev-002", Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult("class Foo {}"));
+        _vcsProvider.GetBlameAsync(RepoPath, "src/Domain/Foo.cs", "rev-002", Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(blame));
+        _chunker.CanHandle("src/Domain/Foo.cs").Returns(true);
+        _chunker.Chunk(Arg.Any<string>(), Arg.Any<ChunkMetadata>())
+            .Returns(new List<CodeChunk> { chunk });
+        _vectorStore.UpsertAsync(Arg.Any<Guid>(), Arg.Any<float[]>(), Arg.Any<ChunkMetadata>(), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+        _embeddingProvider.EmbedAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new float[] { 0.1f }));
+
+        await _handler.Handle(new IndexRepositoryCommand(FullReindex: false), CancellationToken.None);
+
+        // Old path chunks must be deleted
+        await _vectorStore.Received(1)
+            .DeleteByFilePathAsync("src/Core/Foo.cs", Arg.Any<CancellationToken>());
+
+        // New path must be indexed
+        await _vectorStore.Received(1)
+            .UpsertAsync(Arg.Any<Guid>(), Arg.Any<float[]>(), Arg.Any<ChunkMetadata>(), Arg.Any<CancellationToken>());
+
+        // Old path must NOT be fetched from VCS
+        await _vcsProvider.DidNotReceive()
+            .GetFileContentAsync(RepoPath, "src/Core/Foo.cs", Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task Handle_ReturnsCorrectJobResult()
     {
         var file = new VcsFile("src/Bar.cs", "rev-002");

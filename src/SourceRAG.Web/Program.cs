@@ -27,6 +27,7 @@ if (builder.Environment.IsDevelopment())
     // Dev mode: bypass Entra ID, use plain HttpClient (API has FallbackPolicy = AllowAll in dev)
     builder.Services.AddAuthentication();
     builder.Services.AddAuthorization();
+    builder.Services.AddControllers();
     builder.Services.AddHttpClient<SourceRagApiClient>(client =>
     {
         client.BaseAddress = new Uri(

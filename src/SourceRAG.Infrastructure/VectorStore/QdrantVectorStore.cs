@@ -44,6 +44,12 @@ public sealed class QdrantVectorStore : IVectorStore
                 _options.CollectionName,
                 new VectorParams { Size = (ulong)dimensions, Distance = Distance.Cosine },
                 cancellationToken: ct);
+
+            await _client.CreatePayloadIndexAsync(
+                _options.CollectionName,
+                "file_path",
+                PayloadSchemaType.Keyword,
+                cancellationToken: ct);
         }
     }
 

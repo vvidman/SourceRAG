@@ -1,0 +1,84 @@
+version: "3.9"
+
+services:
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: src/SourceRAG.Api/Dockerfile
+    ports:
+      - "7001:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      # Provider config — fully local, no API keys
+      - SourceRAG__VcsProvider=Git
+      - SourceRAG__EmbeddingProvider=Local
+      - SourceRAG__LlmProvider=Local
+      # Paths inside the container (mapped from host via volumes below)
+      - SourceRAG__RepositoryPath=/repos/target
+      - SourceRAG__LlamaSharp__ModelPath=/models/embed.gguf
+      - SourceRAG__LlamaSharp__LlmModelPath=/models/llm.gguf
+      - SourceRAG__Qdrant__Endpoint=http://qdrant:6333
+      - SourceRAG__Qdrant__CollectionName=sourcerag
+      - SourceRAG__Branch=main
+      # Git PAT for private repos — leave empty for public repos
+      - SOURCERAG_GIT_PAT=${SOURCERAG_GIT_PAT}
+    volumes:
+      # Host paths come from .env file
+      - ${REPO_PATH}:/repos/target:ro
+      - ${EMBED_MODEL_PATH}:/models/embed.gguf:ro
+      - ${LLM_MODEL_PATH}:/models/llm.gguf:ro
+    depends_on:
+      - qdrant
+    restart: unless-stopped
+
+  mcphost:
+    build:
+      context: .
+      dockerfile: src/SourceRAG.McpHost/Dockerfile
+    ports:
+      - "7002:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - SourceRAG__VcsProvider=Git
+      - SourceRAG__EmbeddingProvider=Local
+      - SourceRAG__LlmProvider=Local
+      - SourceRAG__RepositoryPath=/repos/target
+      - SourceRAG__LlamaSharp__ModelPath=/models/embed.gguf
+      - SourceRAG__LlamaSharp__LlmModelPath=/models/llm.gguf
+      - SourceRAG__Qdrant__Endpoint=http://qdrant:6333
+      - SourceRAG__Qdrant__CollectionName=sourcerag
+      - SourceRAG__Branch=main
+      - SOURCERAG_GIT_PAT=${SOURCERAG_GIT_PAT}
+    volumes:
+      - ${REPO_PATH}:/repos/target:ro
+      - ${EMBED_MODEL_PATH}:/models/embed.gguf:ro
+      - ${LLM_MODEL_PATH}:/models/llm.gguf:ro
+    depends_on:
+      - qdrant
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: src/SourceRAG.Web/Dockerfile
+    ports:
+      - "7003:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - SourceRagApi__BaseUrl=http://api:8080
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  qdrant_data:
