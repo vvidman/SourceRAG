@@ -32,18 +32,22 @@ builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 
 // Auth (ADR-011) — same JWT validation as Api
-builder.Services
-    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAd"));
-
-builder.Services.AddAuthorization(options =>
-    options.AddPolicy("McpAccess", p => p.RequireClaim("scp", "sourcerag.query")));
-
 if (builder.Environment.IsDevelopment())
 {
+    // Dev bypass — no Entra ID required
+    builder.Services.AddAuthentication();
     builder.Services.AddAuthorization(options =>
         options.FallbackPolicy = new AuthorizationPolicyBuilder()
             .RequireAssertion(_ => true).Build());
+}
+else
+{
+    builder.Services
+        .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAd"));
+
+    builder.Services.AddAuthorization(options =>
+        options.AddPolicy("McpAccess", p => p.RequireClaim("scp", "sourcerag.query")));
 }
 
 // MCP server (HTTP/SSE transport — not stdio, auth requires HTTP)

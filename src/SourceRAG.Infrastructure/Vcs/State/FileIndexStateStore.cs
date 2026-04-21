@@ -15,6 +15,7 @@
 */
 
 using System.Text.Json;
+using SourceRAG.Domain.Entities;
 using SourceRAG.Domain.Interfaces;
 
 namespace SourceRAG.Infrastructure.Vcs.State;
@@ -74,11 +75,49 @@ public sealed class FileIndexStateStore : IIndexStateStore
         File.Move(tempPath, finalPath, overwrite: true);
     }
 
+    public async Task SaveCheckpointAsync(
+        string repoPath, string revision, string lastProcessedFile, CancellationToken ct)
+    {
+        var existing = await ReadStateAsync(repoPath, ct);
+        var updated  = new IndexState
+        {
+            LastIndexedRevision = existing?.LastIndexedRevision,
+            LastIndexedAt       = existing?.LastIndexedAt,
+            CheckpointRevision  = revision,
+            CheckpointLastFile  = lastProcessedFile
+        };
+        await WriteStateAsync(repoPath, updated, ct);
+    }
+
+    public async Task<IndexCheckpoint?> GetCheckpointAsync(string repoPath, CancellationToken ct)
+    {
+        var state = await ReadStateAsync(repoPath, ct);
+        if (state?.CheckpointRevision is null || state.CheckpointLastFile is null)
+            return null;
+        return new IndexCheckpoint(state.CheckpointRevision, state.CheckpointLastFile);
+    }
+
+    public async Task ClearCheckpointAsync(string repoPath, CancellationToken ct)
+    {
+        var existing = await ReadStateAsync(repoPath, ct);
+        if (existing is null) return;
+        await WriteStateAsync(repoPath, new IndexState
+        {
+            LastIndexedRevision = existing.LastIndexedRevision,
+            LastIndexedAt       = existing.LastIndexedAt,
+            CheckpointRevision  = null,
+            CheckpointLastFile  = null
+        }, ct);
+    }
+
     // ── inner model ──────────────────────────────────────────────────────────
 
     private sealed class IndexState
     {
-        public string?       LastIndexedRevision { get; init; }
-        public DateTimeOffset? LastIndexedAt     { get; init; }
+        public string?         LastIndexedRevision { get; init; }
+        public DateTimeOffset? LastIndexedAt       { get; init; }
+        // Checkpoint fields — null when no in-progress run exists
+        public string?         CheckpointRevision  { get; init; }
+        public string?         CheckpointLastFile  { get; init; }
     }
 }

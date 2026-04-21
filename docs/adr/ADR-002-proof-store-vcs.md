@@ -54,3 +54,26 @@ No additional persistence layer is required.
 **PostgreSQL as proof store** — rejected; significant operational overhead, and content is already in the VCS.
 
 **Store full chunk text in Qdrant payload** — rejected; duplicates content, inflates payload size, and creates a staleness problem on reindex.
+
+## Addendum — Resumable Indexing (Checkpoint)
+
+The `.sourcerag-state.json` file (managed by `FileIndexStateStore`) now also carries
+an optional checkpoint record alongside the `LastIndexedRevision`:
+
+```json
+{
+  "LastIndexedRevision": "a3f9c12",
+  "LastIndexedAt": "2026-04-21T10:00:00Z",
+  "CheckpointRevision": null,
+  "CheckpointLastFile": null
+}
+```
+
+During a full reindex, `CheckpointRevision` and `CheckpointLastFile` are written after
+each successfully processed file. On successful completion they are cleared.
+
+If the process crashes mid-run, the next full reindex detects the checkpoint and skips
+all files up to and including `CheckpointLastFile`, resuming from the next file.
+
+Checkpoints are revision-scoped: if HEAD has moved since the crash, the checkpoint is
+ignored and a fresh full reindex begins.

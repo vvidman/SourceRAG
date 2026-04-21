@@ -27,7 +27,14 @@ flowchart TD
     VS -.->|reconstruct chunk text at query time| VCS
 ```
 
-**Indexing:** `GetFilesAtHead` → `GetBlame` → `IChunker` (Roslyn / PlainText) → `IEmbeddingProvider` → `Qdrant.Upsert`
+### Indexing Pipeline
+
+`GetFilesAtHeadAsync` → per-file: `GetFileContentAsync + GetBlameAsync` → `IChunker`
+→ `IEmbeddingProvider.EmbedAsync` → `IVectorStore.UpsertAsync`
+→ **checkpoint saved after each file** → on completion: checkpoint cleared, state saved
+
+If the process crashes mid-run, the next full reindex resumes from the last
+checkpointed file rather than restarting from scratch.
 
 **Query:** `Embed(query)` → `Qdrant.Search` → `VCS.GetFileContent(revision, filePath)` per chunk → LLM call → `QueryResult`
 

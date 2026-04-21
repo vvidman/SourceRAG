@@ -17,6 +17,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using MediatR;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SourceRAG.Application.Common;
 using SourceRAG.Domain.Entities;
@@ -34,6 +35,7 @@ public sealed class IndexRepositoryHandler : IRequestHandler<IndexRepositoryComm
     private readonly IVectorStore _vectorStore;
     private readonly IIndexStateStore _indexStateStore;
     private readonly IOptions<SourceRagOptions> _options;
+    private readonly ILogger<IndexRepositoryHandler> _logger;
 
     public IndexRepositoryHandler(
         IVcsProvider vcsProvider,
@@ -42,15 +44,17 @@ public sealed class IndexRepositoryHandler : IRequestHandler<IndexRepositoryComm
         IEmbeddingProvider embeddingProvider,
         IVectorStore vectorStore,
         IIndexStateStore indexStateStore,
-        IOptions<SourceRagOptions> options)
+        IOptions<SourceRagOptions> options,
+        ILogger<IndexRepositoryHandler> logger)
     {
-        _vcsProvider = vcsProvider;
-        _reindexStrategy = reindexStrategy;
-        _chunkers = chunkers;
+        _vcsProvider       = vcsProvider;
+        _reindexStrategy   = reindexStrategy;
+        _chunkers          = chunkers;
         _embeddingProvider = embeddingProvider;
-        _vectorStore = vectorStore;
-        _indexStateStore = indexStateStore;
-        _options = options;
+        _vectorStore       = vectorStore;
+        _indexStateStore   = indexStateStore;
+        _options           = options;
+        _logger            = logger;
     }
 
     public async Task<IndexJobResult> Handle(IndexRepositoryCommand request, CancellationToken ct)
@@ -114,12 +118,47 @@ public sealed class IndexRepositoryHandler : IRequestHandler<IndexRepositoryComm
             DateTimeOffset.UtcNow - context.StartedAt);
     }
 
-    private async Task<string> FullReindexAsync(string repoPath, string branch, PipelineContext context, CancellationToken ct)
+    private async Task<string> FullReindexAsync(
+        string repoPath, string branch, PipelineContext context, CancellationToken ct)
     {
-        var files = await _vcsProvider.GetFilesAtHeadAsync(repoPath, ct);
+        // Capture the target revision before the loop so that the checkpoint
+        // revision stays consistent even if HEAD moves during a long run.
+        var toRevision = _vcsProvider.GetCurrentRevision(repoPath);
+
+        // Check for a checkpoint from a previously crashed run at the same revision.
+        var checkpoint      = await _indexStateStore.GetCheckpointAsync(repoPath, ct);
+        var resumeAfterFile = (checkpoint?.Revision == toRevision)
+            ? checkpoint.LastProcessedFile
+            : null;
+
+        if (resumeAfterFile is not null)
+            _logger.LogInformation(
+                "Resuming full reindex from checkpoint. " +
+                "Skipping files up to and including: {File}", resumeAfterFile);
+
+        var files            = await _vcsProvider.GetFilesAtHeadAsync(repoPath, ct);
+        var skipUntilResumed = resumeAfterFile is not null;
+
         foreach (var file in files)
+        {
+            // Skip already-processed files when resuming from checkpoint.
+            if (skipUntilResumed)
+            {
+                if (file.Path == resumeAfterFile)
+                    skipUntilResumed = false;
+                continue;
+            }
+
             await ProcessFileAsync(repoPath, file.Path, file.Revision, branch, context, ct);
-        return _vcsProvider.GetCurrentRevision(repoPath);
+
+            // Persist progress after every successfully processed file.
+            await _indexStateStore.SaveCheckpointAsync(repoPath, toRevision, file.Path, ct);
+        }
+
+        // Run completed successfully — remove the checkpoint.
+        await _indexStateStore.ClearCheckpointAsync(repoPath, ct);
+
+        return toRevision;
     }
 
     private async Task ProcessFileAsync(string repoPath, string filePath, string revision, string branch, PipelineContext context, CancellationToken ct)

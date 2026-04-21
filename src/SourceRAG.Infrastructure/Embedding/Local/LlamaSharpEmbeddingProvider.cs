@@ -48,7 +48,16 @@ public sealed class LlamaSharpEmbeddingProvider : IEmbeddingProvider, IAsyncDisp
     public async Task<float[]> EmbedAsync(string text, CancellationToken ct)
     {
         await EnsureInitializedAsync(ct);
-        var result = await _embedder!.GetEmbeddings(text, ct);
+
+        const int maxChars = 6000;
+        var input = text.Length > maxChars ? text[..maxChars] : text;
+
+        if (text.Length > maxChars)
+            _logger.LogWarning(
+                "Chunk truncated from {Original} to {Max} chars for embedding.",
+                text.Length, maxChars);
+
+        var result = await _embedder!.GetEmbeddings(input, ct);
         return result[0];
     }
 

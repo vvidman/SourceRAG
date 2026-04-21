@@ -37,22 +37,29 @@ builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 
 // Auth (ADR-011)
-builder.Services
-    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAd"));
-
-builder.Services.AddAuthorization(options =>
-{
-    options.AddPolicy("CanQuery", p => p.RequireClaim("scp", "sourcerag.query"));
-    options.AddPolicy("CanIndex", p => p.RequireClaim("scp", "sourcerag.index"));
-});
-
-// Dev bypass (never runs in Production)
 if (builder.Environment.IsDevelopment())
 {
+    builder.Services.AddAuthentication();
     builder.Services.AddAuthorization(options =>
+    {
+        // Named policies must exist even in dev — allow everything
+        options.AddPolicy("CanQuery", p => p.RequireAssertion(_ => true));
+        options.AddPolicy("CanIndex", p => p.RequireAssertion(_ => true));
         options.FallbackPolicy = new AuthorizationPolicyBuilder()
-            .RequireAssertion(_ => true).Build());
+            .RequireAssertion(_ => true).Build();
+    });
+}
+else
+{
+    builder.Services
+        .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAd"));
+
+    builder.Services.AddAuthorization(options =>
+    {
+        options.AddPolicy("CanQuery", p => p.RequireClaim("scp", "sourcerag.query"));
+        options.AddPolicy("CanIndex", p => p.RequireClaim("scp", "sourcerag.index"));
+    });
 }
 
 builder.Services.AddOpenApi();
@@ -74,7 +81,9 @@ using (var scope = app.Services.CreateScope())
 if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 
-app.UseHttpsRedirection();
+if (!app.Environment.IsDevelopment())
+    app.UseHttpsRedirection();
+
 app.UseAuthentication();
 app.UseAuthorization();
 

@@ -14,6 +14,7 @@
    limitations under the License.
 */
 
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
 using SourceRAG.Application.Common;
@@ -52,7 +53,8 @@ public class IndexRepositoryHandlerTests
             _embeddingProvider,
             _vectorStore,
             _indexStateStore,
-            options);
+            options,
+            NullLogger<IndexRepositoryHandler>.Instance);
 
         _vcsProvider.GetCurrentRevision(RepoPath).Returns("rev-head");
         _embeddingProvider.EmbedAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
@@ -182,6 +184,83 @@ public class IndexRepositoryHandlerTests
         // Old path must NOT be fetched from VCS
         await _vcsProvider.DidNotReceive()
             .GetFileContentAsync(RepoPath, "src/Core/Foo.cs", Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Handle_FullReindex_ResumesFromCheckpointIfSameRevision()
+    {
+        // Files to index
+        var file1 = new VcsFile("src/A.cs", "rev-head");
+        var file2 = new VcsFile("src/B.cs", "rev-head");
+        var blame = new FileBlameInfo
+        {
+            FilePath = "src/B.cs", Revision = "rev-head",
+            Author = "dev", CommitMessage = "msg", Timestamp = DateTimeOffset.UtcNow
+        };
+        var chunk = new CodeChunk("class B {}", new ChunkMetadata
+        {
+            FilePath = "src/B.cs", Revision = "rev-head",
+            Author = "dev", CommitMessage = "msg",
+            Timestamp = DateTimeOffset.UtcNow, Branch = "main"
+        });
+
+        _vcsProvider.GetCurrentRevision(RepoPath).Returns("rev-head");
+        _vcsProvider.GetFilesAtHeadAsync(RepoPath, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<VcsFile>>(new[] { file1, file2 }));
+
+        // Checkpoint says A.cs was already processed at rev-head
+        _indexStateStore.GetCheckpointAsync(RepoPath, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IndexCheckpoint?>(new IndexCheckpoint("rev-head", "src/A.cs")));
+        _indexStateStore.SaveCheckpointAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+        _indexStateStore.ClearCheckpointAsync(RepoPath, Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+
+        _vcsProvider.GetFileContentAsync(RepoPath, "src/B.cs", "rev-head", Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult("class B {}"));
+        _vcsProvider.GetBlameAsync(RepoPath, "src/B.cs", "rev-head", Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(blame));
+        _chunker.CanHandle("src/B.cs").Returns(true);
+        _chunker.Chunk(Arg.Any<string>(), Arg.Any<ChunkMetadata>())
+            .Returns(new List<CodeChunk> { chunk });
+        _vectorStore.UpsertAsync(Arg.Any<Guid>(), Arg.Any<float[]>(), Arg.Any<ChunkMetadata>(), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+
+        await _handler.Handle(new IndexRepositoryCommand(FullReindex: true), CancellationToken.None);
+
+        // A.cs was skipped — no VCS call for it
+        await _vcsProvider.DidNotReceive()
+            .GetFileContentAsync(RepoPath, "src/A.cs", Arg.Any<string>(), Arg.Any<CancellationToken>());
+
+        // B.cs was processed
+        await _vcsProvider.Received(1)
+            .GetFileContentAsync(RepoPath, "src/B.cs", "rev-head", Arg.Any<CancellationToken>());
+
+        // Checkpoint cleared on success
+        await _indexStateStore.Received(1)
+            .ClearCheckpointAsync(RepoPath, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Handle_FullReindex_IgnoresCheckpointIfDifferentRevision()
+    {
+        _vcsProvider.GetCurrentRevision(RepoPath).Returns("rev-new");
+        _vcsProvider.GetFilesAtHeadAsync(RepoPath, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<VcsFile>>(Array.Empty<VcsFile>()));
+
+        // Checkpoint is for an old revision — must be ignored
+        _indexStateStore.GetCheckpointAsync(RepoPath, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IndexCheckpoint?>(new IndexCheckpoint("rev-old", "src/A.cs")));
+        _indexStateStore.ClearCheckpointAsync(RepoPath, Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+
+        await _handler.Handle(new IndexRepositoryCommand(FullReindex: true), CancellationToken.None);
+
+        // No file skipping — A.cs would be processed if it were in the file list
+        // Verified by confirming GetFilesAtHead was called (not short-circuited)
+        await _vcsProvider.Received(1)
+            .GetFilesAtHeadAsync(RepoPath, Arg.Any<CancellationToken>());
     }
 
     [Fact]

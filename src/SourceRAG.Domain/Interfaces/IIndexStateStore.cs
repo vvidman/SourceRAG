@@ -14,6 +14,8 @@
    limitations under the License.
 */
 
+using SourceRAG.Domain.Entities;
+
 namespace SourceRAG.Domain.Interfaces;
 
 public interface IIndexStateStore
@@ -21,4 +23,20 @@ public interface IIndexStateStore
     Task<string?> GetLastIndexedRevisionAsync(string repoPath, CancellationToken ct);
     Task SetLastIndexedRevisionAsync(string repoPath, string revision, DateTimeOffset indexedAt, CancellationToken ct);
     Task<DateTimeOffset?> GetLastIndexedAtAsync(string repoPath, CancellationToken ct);
+
+    /// <summary>
+    /// Saves a mid-run checkpoint. Called after each successfully processed file
+    /// during a full reindex so the run can resume after a crash.
+    /// </summary>
+    Task SaveCheckpointAsync(string repoPath, string revision, string lastProcessedFile, CancellationToken ct);
+
+    /// <summary>
+    /// Returns the current checkpoint for the given repo, or null if none exists.
+    /// </summary>
+    Task<IndexCheckpoint?> GetCheckpointAsync(string repoPath, CancellationToken ct);
+
+    /// <summary>
+    /// Removes the checkpoint after a successful full reindex completion.
+    /// </summary>
+    Task ClearCheckpointAsync(string repoPath, CancellationToken ct);
 }
